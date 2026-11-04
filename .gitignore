@@ -1,0 +1,12 @@
+.local/
+private/
+node_modules/
+*.log
+*.csv
+*.xlsx
+*.xls
+*.ods
+*.env
+*.secret
+.wrangler/
+.DS_Store

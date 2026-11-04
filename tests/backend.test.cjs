@@ -1,0 +1,21 @@
+const fs=require('fs'),vm=require('vm'),crypto=require('crypto'),assert=require('assert');
+class Sheet{constructor(){this.rows=[];} getLastRow(){for(let i=this.rows.length-1;i>=0;i--){if(this.rows[i]?.some(x=>x!==''&&x!==null&&x!==undefined))return i+1;}return 0;}getMaxRows(){return 1000;}setFrozenRows(){return this;}appendRow(v){this.rows.push(v.map(x=>String(x??'')));return this;}getRange(row,col,h=1,w=1){const s=this;return {setValues(arr){for(let i=0;i<h;i++){const r=row-1+i;s.rows[r]||=[];for(let j=0;j<w;j++)s.rows[r][col-1+j]=String(arr[i][j]??'');}return this;},getDisplayValues(){return Array.from({length:h},(_,i)=>Array.from({length:w},(_,j)=>String(s.rows[row-1+i]?.[col-1+j]??'')));},setValue(v){return this.setValues([[v]]);},setBackground(){return this;},setFontWeight(){return this;},setNumberFormat(){return this;}};}}
+const sheets=new Map(),sent=[];const book={getSheetByName(n){return sheets.get(n)||null},insertSheet(n){const s=new Sheet();sheets.set(n,s);return s;}};
+const ctx=vm.createContext({console,Date,Math,JSON,Number,String,Array,Object,parseInt,Error,RegExp,PropertiesService:{},getSharedSecret_:()=> 'local_test_secret',SpreadsheetApp:{getActiveSpreadsheet:()=>book},MailApp:{getRemainingDailyQuota:()=>300,sendEmail:msg=>sent.push(msg)},LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},Utilities:{computeDigest:(_,s)=>Array.from(crypto.createHash('sha256').update(s).digest()),DigestAlgorithm:{SHA_256:'SHA_256'},getUuid:()=>crypto.randomUUID(),formatDate:()=> '2026-11-04'},ContentService:{createTextOutput: x=>({text:x,setMimeType(){return this}}),MimeType:{JSON:'json'}}});
+vm.runInContext(fs.readFileSync(__dirname+'/../apps-script/Code.gs','utf8'),ctx);
+function call(fn,arg){return vm.runInContext(`${fn}(${JSON.stringify(arg)})`,ctx)}
+function eq(a,b){assert.equal(a,b);}
+call('init_',{});eq(call('config_',{}).registrationOpen,false);
+let options=call('options_',true);eq(options.filter(o=>o.category==='degree').length,12);
+eq(call('settingsSave_',{registrationOpen:true,defaultFacultyId:'FAC001',bankExportEnabled:true}).ok,true);eq(call('config_',{}).registrationOpen,true);
+const email='tester@example.com';let sentOtp=call('requestOtp_',{email});eq(sentOtp.ok,true);const otp=sent[0].body.match(/\d{6}/)[0];
+const data={role:'STUDENT',identity:'69010012',email,prefix:'MISS',gender:'FEMALE',firstTh:'ทดสอบ',lastTh:'ตัวอย่าง',firstEn:'Test',lastEn:'Student',birthDate:'2008-05-20',degree:'DIPLOMA',studyYear:'1',currentLevel:'ปวส.',major:'DIGITAL_BUSINESS',nationality:'THAI',nationalId:'1234567890123',dataAck:true,bankPermission:true,otp,requestId:'test-request-10000000001'};
+eq(call('register_',{...data,otp:'000000'}).ok,false);
+let result=call('register_',data);assert(result.ok,JSON.stringify(result));
+const users=call('users_',{offset:0});eq(users.total,1);eq(users.rows[0][2],'1');eq(users.rows[0][10],'2008-05-20');eq(users.rows[0][14],'DIPLOMA');eq(users.rows[0][22],'Active');
+let output=call('export_',{offset:0});eq(output.total,1);eq(output.rows[0].length,23);
+eq(call('register_',data).ok,true); // identical retry must return the same reference
+let changed=call('optionSave_',{category:'degree',code:'DIPLOMA',labelTh:'ปวช. / ปวส. / อนุปริญญา',labelEn:'Diploma',sort:50,enabled:true});eq(changed.ok,true);
+const teacher='teacher@example.com';call('requestOtp_',{email:teacher});const otp2=sent[1].body.match(/\d{6}/)[0];let teacherData={role:'TEACHER',identity:'1234567890987',email:teacher,prefix:'MR',gender:'MALE',firstTh:'ครู',lastTh:'ตัวอย่าง',firstEn:'Teacher',lastEn:'Example',birthDate:'1980-03-01',nationality:'THAI',nationalId:'1234567890987',dataAck:true,bankPermission:true,otp:otp2,requestId:'test-request-20000000002'};eq(call('register_',teacherData).ok,true);const all=call('users_',{offset:0});eq(all.total,2);eq(all.rows[1][14],'OTHER');eq(all.rows[1][15],'0');const ds=call('dashboard_',{});eq(ds.stats.student,1);eq(ds.stats.staff,1);
+let adminData=all.rows[0].slice();adminData[22]='Inactive';eq(call('userSave_',{id:adminData[0],values:adminData}).ok,true);const out2=call('export_',{offset:0});eq(out2.total,1);eq(out2.excludedCount,1);
+console.log('PASS: init, 12 degree codes, settings, email OTP, invalid OTP, registration, duplicate, mapping, teacher hidden defaults, options CRUD, edit user, export filtering');

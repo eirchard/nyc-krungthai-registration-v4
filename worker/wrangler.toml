@@ -2,3 +2,18 @@ name = "nyc-krungthai-registration-v4-api"
 main = "index.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
+
+# Edge-backed approximate per-IP limits; choose unique namespaces for this account.
+[[ratelimits]]
+name = "LOGIN_RATE_LIMITER"
+namespace_id = "28641"
+[ratelimits.simple]
+limit = 5
+period = 60
+
+[[ratelimits]]
+name = "OTP_RATE_LIMITER"
+namespace_id = "28642"
+[ratelimits.simple]
+limit = 8
+period = 60
